@@ -25,9 +25,10 @@ interface Props {
   scenarios: Scenario[]
   loading: boolean
   onAnalyze: (payload: AnalyzePayload, traceText: string) => void
+  initialScenarioId?: string
 }
 
-export function ConfigPanel({ scenarios, loading, onAnalyze }: Props) {
+export function ConfigPanel({ scenarios, loading, onAnalyze, initialScenarioId }: Props) {
   const [scenarioId, setScenarioId] = useState("")
   const [traceText, setTraceText] = useState("")
   const [detectors, setDetectors] = useState<Record<string, boolean>>(
@@ -39,9 +40,14 @@ export function ConfigPanel({ scenarios, loading, onAnalyze }: Props) {
   const [redact, setRedact] = useState(true)
 
   useEffect(() => {
-    if (scenarios.length && !scenarioId) loadScenario(scenarios[0].id)
+    if (!scenarios.length) return
+    if (initialScenarioId && scenarios.some((s) => s.id === initialScenarioId)) {
+      loadScenario(initialScenarioId)
+    } else if (!scenarioId) {
+      loadScenario(scenarios[0].id)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarios])
+  }, [scenarios, initialScenarioId])
 
   async function loadScenario(id: string) {
     setScenarioId(id)
@@ -95,7 +101,7 @@ export function ConfigPanel({ scenarios, loading, onAnalyze }: Props) {
               <SelectContent>
                 {scenarios.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.id}
+                    {s.name ?? s.id}
                   </SelectItem>
                 ))}
               </SelectContent>

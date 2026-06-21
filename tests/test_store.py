@@ -78,3 +78,37 @@ def test_stats(store: Store):
     assert s["runs"] == 1
     assert s["avg_risk_index"] is not None
     assert len(s["recent_runs"]) == 1
+
+
+def _trace():
+    return load_example_trace("healthcare_patient_summary").to_dict()
+
+
+def test_scenario_crud(store: Store):
+    sc = store.create_scenario(
+        "My scenario", _trace(), domain="finance", description="d",
+        sensitive_data=["ssn", "email"], tags=["t"], difficulty="hard",
+    )
+    assert sc["id"].startswith("sce_")
+    assert sc["domain"] == "finance"
+    assert sc["builtin"] is False
+    assert "trace" in sc and sc["trace"]["events"]
+
+    listed = store.list_scenarios()
+    assert len(listed) == 1
+    assert "trace" not in listed[0]  # list is summary-only
+
+    assert store.get_scenario(sc["id"], with_trace=False).get("trace") is None
+    assert store.delete_scenario(sc["id"]) is True
+    assert store.get_scenario(sc["id"]) is None
+
+
+def test_scenario_import_idempotency_helpers(store: Store):
+    assert store.scenario_exists("pack_a", "origin_1") is False
+    assert store.count_pack_scenarios("pack_a") == 0
+
+    store.create_scenario("S", _trace(), source="imported", pack_id="pack_a", origin_id="origin_1")
+    assert store.scenario_exists("pack_a", "origin_1") is True
+    assert store.scenario_exists("pack_a", "origin_2") is False
+    assert store.scenario_exists("pack_a", "") is False  # blank origin never matches
+    assert store.count_pack_scenarios("pack_a") == 1

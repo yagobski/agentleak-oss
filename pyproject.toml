@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentleak"
-version = "0.2.0"
+version = "0.3.0"
 description = "Open-source privacy-leakage testing framework for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,6 +63,7 @@ packages = ["agentleak"]
 artifacts = [
   "agentleak/reporters/templates/*.j2",
   "agentleak/examples/*.json",
+  "agentleak/scenarios/packs/*.json",
   "agentleak/web/static/**/*",
 ]
 

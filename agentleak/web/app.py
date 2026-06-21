@@ -22,7 +22,9 @@ from ..core.trace import CHANNELS, Trace
 from ..detectors import BUILTIN_DETECTORS
 from ..integrations import registry
 from ..reporters import render
-from ..scenarios import list_scenarios, load_example_trace
+from ..scenarios import SCENARIOS, list_scenarios, load_example_trace
+from ..scenarios.convert import normalize_upload
+from ..scenarios.packs import expand_pack, list_packs
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _GUI_IMPORT_ERROR = (
@@ -62,9 +64,18 @@ def _config_data(settings: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _trace_from_payload(payload: dict[str, Any]) -> Trace:
-    if payload.get("scenario_id"):
-        return load_example_trace(payload["scenario_id"])
+def _trace_from_payload(payload: dict[str, Any], store: Store | None = None) -> Trace:
+    sid = payload.get("scenario_id")
+    if sid:
+        try:
+            return load_example_trace(sid)  # built-in
+        except (KeyError, ValueError):
+            pass
+        if store is not None:
+            stored = store.get_scenario(sid)
+            if stored and stored.get("trace"):
+                return Trace.from_dict(stored["trace"])
+        raise ValueError(f"Unknown scenario '{sid}'.")
     trace = payload.get("trace")
     if not trace:
         raise ValueError("Provide a 'trace' object or a 'scenario_id'.")
@@ -73,13 +84,34 @@ def _trace_from_payload(payload: dict[str, Any]) -> Trace:
     return Trace.from_dict(trace)
 
 
-def _analyze(payload: dict[str, Any], *, project_name: str | None = None) -> AnalysisResult:
+def _analyze(
+    payload: dict[str, Any], *, project_name: str | None = None, store: Store | None = None
+) -> AnalysisResult:
     data = _config_data(payload)
     if project_name:
         data["project"] = {"name": project_name}
     cfg = Config.from_dict(data) if data else None
-    trace = _trace_from_payload(payload)
+    trace = _trace_from_payload(payload, store)
     return AgentLeakRunner(cfg).analyze(trace)
+
+
+def _builtin_scenario_summary(scenario: Any) -> dict[str, Any]:
+    """Normalize a built-in Scenario to the unified scenario-list shape."""
+    d = scenario.to_dict()
+    return {
+        "id": d["id"],
+        "name": d["id"],
+        "domain": d["domain"],
+        "description": d["description"],
+        "sensitive_data": d["sensitive_data"],
+        "expected_behavior": d["expected_behavior"],
+        "tags": [],
+        "difficulty": "",
+        "source": "builtin",
+        "builtin": True,
+        "pack_id": "",
+        "origin_id": "",
+    }
 
 
 def _level_profile_ints(report: dict[str, Any]) -> dict[int, int]:
@@ -111,14 +143,97 @@ def create_app(store: Store | None = None):  # noqa: ANN201
 
     @app.get("/api/scenarios")
     def scenarios() -> list[dict[str, Any]]:
-        return [s.to_dict() for s in list_scenarios()]
+        """Unified library: built-in scenarios first, then stored ones."""
+        builtin = [_builtin_scenario_summary(s) for s in list_scenarios()]
+        return builtin + db.list_scenarios()
+
+    @app.post("/api/scenarios")
+    def create_scenario(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Create a scenario from an uploaded object (trace / spec / ai4privacy).
+
+        Optional ``name``/``domain``/``description``/``tags`` override the values
+        inferred from the upload.
+        """
+        source_obj = payload.get("data", payload.get("scenario", payload))
+        if isinstance(source_obj, str):
+            try:
+                source_obj = json.loads(source_obj)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+        try:
+            meta, trace = normalize_upload(source_obj)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return db.create_scenario(
+            payload.get("name") or meta["name"],
+            trace.to_dict(),
+            domain=payload.get("domain") or meta["domain"],
+            description=payload.get("description") or meta["description"],
+            sensitive_data=payload.get("sensitive_data") or meta["sensitive_data"],
+            tags=payload.get("tags") or meta["tags"],
+            difficulty=payload.get("difficulty") or meta.get("difficulty", ""),
+            source="custom",
+        )
+
+    @app.get("/api/scenarios/{scenario_id}")
+    def get_scenario_detail(scenario_id: str) -> dict[str, Any]:
+        if scenario_id in SCENARIOS:
+            summary = _builtin_scenario_summary(SCENARIOS[scenario_id])
+            summary["trace"] = load_example_trace(scenario_id).to_dict()
+            return summary
+        stored = db.get_scenario(scenario_id)
+        if not stored:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+        return stored
+
+    @app.delete("/api/scenarios/{scenario_id}")
+    def delete_scenario(scenario_id: str) -> dict[str, bool]:
+        if scenario_id in SCENARIOS:
+            raise HTTPException(status_code=400, detail="Built-in scenarios cannot be deleted.")
+        if not db.delete_scenario(scenario_id):
+            raise HTTPException(status_code=404, detail="Scenario not found")
+        return {"deleted": True}
 
     @app.get("/api/example/{scenario_id}")
     def example(scenario_id: str) -> dict[str, Any]:
+        """A scenario's trace (built-in or stored) — used to seed the playground."""
         try:
             return load_example_trace(scenario_id).to_dict()
-        except (KeyError, ValueError) as exc:
+        except (KeyError, ValueError):
+            stored = db.get_scenario(scenario_id)
+            if stored and stored.get("trace"):
+                return stored["trace"]
+            raise HTTPException(status_code=404, detail="Scenario not found") from None
+
+    # -- scenario packs ------------------------------------------------
+    @app.get("/api/scenario-packs")
+    def scenario_packs() -> list[dict[str, Any]]:
+        packs = list_packs()
+        for pack in packs:
+            pack["imported_count"] = db.count_pack_scenarios(pack["id"])
+        return packs
+
+    @app.post("/api/scenario-packs/{pack_id}/import")
+    def import_pack(pack_id: str) -> dict[str, Any]:
+        try:
+            entries = expand_pack(pack_id)
+        except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        imported, skipped = 0, 0
+        for meta, trace in entries:
+            origin = meta.get("origin_id", "") or ""
+            if db.scenario_exists(pack_id, origin):
+                skipped += 1
+                continue
+            db.create_scenario(
+                meta["name"], trace.to_dict(),
+                domain=meta["domain"], description=meta["description"],
+                sensitive_data=meta["sensitive_data"], tags=meta["tags"],
+                difficulty=meta.get("difficulty", ""),
+                source="imported", pack_id=pack_id, origin_id=origin,
+            )
+            imported += 1
+        return {"imported": imported, "skipped": skipped, "pack_id": pack_id}
 
     @app.get("/api/stats")
     def stats() -> dict[str, Any]:
@@ -128,7 +243,7 @@ def create_app(store: Store | None = None):  # noqa: ANN201
     @app.post("/api/analyze")
     def analyze(payload: dict[str, Any] = Body(...)) -> JSONResponse:
         try:
-            result = _analyze(payload)
+            result = _analyze(payload, store=db)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(result.to_dict())
@@ -138,7 +253,7 @@ def create_app(store: Store | None = None):  # noqa: ANN201
         if fmt not in {"json", "html", "markdown"}:
             raise HTTPException(status_code=400, detail=f"Unknown format: {fmt}")
         try:
-            data = _analyze(payload).to_dict()
+            data = _analyze(payload, store=db).to_dict()
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         content = render(data, fmt)
@@ -237,7 +352,7 @@ def create_app(store: Store | None = None):  # noqa: ANN201
         settings = {**project["config"], **{k: payload[k] for k in ("detectors", "vault", "custom_detectors", "redact") if k in payload}}
         merged = {**settings, **{k: payload[k] for k in ("trace", "scenario_id") if k in payload}}
         try:
-            result = _analyze(merged, project_name=project["name"])
+            result = _analyze(merged, project_name=project["name"], store=db)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return db.create_run(pid, result.to_dict(), source=payload.get("source", "manual"))

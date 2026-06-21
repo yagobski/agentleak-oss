@@ -90,3 +90,75 @@ def test_stats_endpoint(client: TestClient):
 
 def test_run_unknown_project_404(client: TestClient):
     assert client.post("/api/projects/nope/runs", json={"scenario_id": "hr_employee_case"}).status_code == 404
+
+
+# -- scenario management ------------------------------------------------
+def test_scenarios_list_includes_builtin(client: TestClient):
+    scs = client.get("/api/scenarios").json()
+    assert all("builtin" in s for s in scs)
+    assert any(s["builtin"] and s["id"] == "healthcare_patient_summary" for s in scs)
+
+
+def test_scenario_packs_listed(client: TestClient):
+    packs = client.get("/api/scenario-packs").json()
+    ids = {p["id"] for p in packs}
+    assert {"agentleak_bench", "ai4privacy_probes"} <= ids
+    assert all(p["imported_count"] == 0 for p in packs)
+
+
+def test_import_pack_is_idempotent(client: TestClient):
+    first = client.post("/api/scenario-packs/ai4privacy_probes/import").json()
+    assert first["imported"] > 0 and first["skipped"] == 0
+    again = client.post("/api/scenario-packs/ai4privacy_probes/import").json()
+    assert again["imported"] == 0 and again["skipped"] == first["imported"]
+    # now reflected in the library and pack listing
+    imported = [s for s in client.get("/api/scenarios").json() if s["source"] == "imported"]
+    assert len(imported) == first["imported"]
+    pack = next(p for p in client.get("/api/scenario-packs").json() if p["id"] == "ai4privacy_probes")
+    assert pack["imported_count"] == first["imported"]
+
+
+def test_import_unknown_pack_404(client: TestClient):
+    assert client.post("/api/scenario-packs/nope/import").status_code == 404
+
+
+def test_upload_trace_then_run_and_delete(client: TestClient):
+    trace = {"agent_name": "t", "events": [
+        {"channel": "tool_response", "content": {"email": "a@b.com"}},
+        {"channel": "shared_memory", "content": "memo a@b.com ssn 123-45-6789"},
+    ]}
+    created = client.post("/api/scenarios", json={"data": trace, "name": "Up"}).json()
+    sid = created["id"]
+    assert created["name"] == "Up" and created["source"] == "custom"
+
+    detail = client.get(f"/api/scenarios/{sid}").json()
+    assert detail["trace"]["events"]
+
+    # analyze the stored scenario by id
+    report = client.post("/api/analyze", json={"scenario_id": sid}).json()
+    assert report["summary"]["leaked_secrets"] > 0
+
+    assert client.delete(f"/api/scenarios/{sid}").json()["deleted"] is True
+    assert client.get(f"/api/scenarios/{sid}").status_code == 404
+
+
+def test_upload_ai4privacy_autodetected(client: TestClient):
+    rec = {"id": "x", "category": "finance",
+           "source_text": "Card 4111-1111-1111-1111 for john@x.com",
+           "pii_annotations": [{"type": "CREDIT_CARD"}]}
+    created = client.post("/api/scenarios", json={"data": rec}).json()
+    assert created["domain"] == "finance"
+
+
+def test_upload_junk_400(client: TestClient):
+    assert client.post("/api/scenarios", json={"data": {"foo": "bar"}}).status_code == 400
+
+
+def test_cannot_delete_builtin_scenario(client: TestClient):
+    assert client.delete("/api/scenarios/healthcare_patient_summary").status_code == 400
+
+
+def test_builtin_scenario_detail_has_trace(client: TestClient):
+    detail = client.get("/api/scenarios/healthcare_patient_summary").json()
+    assert detail["builtin"] is True
+    assert detail["trace"]["events"]

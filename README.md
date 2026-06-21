@@ -58,7 +58,10 @@ self-contained (no CDN, self-hosted fonts), with a left-sidebar navigation:
   (weight-robust dominance), export (JSON / MD / HTML), delete.
 - **Dashboard** — average Risk Index, blocked runs, recent activity.
 - **Playground** — score any trace instantly, nothing saved.
-- **Scenarios** — the built-in synthetic library.
+- **Scenarios** — a managed test library: search/filter built-in scenarios,
+  **upload** your own (AgentLeak traces, AgentLeak specs, or ai4privacy records —
+  auto-detected and converted), and **import packs** (the 36-scenario *AgentLeak
+  Bench* and *PII Probes*). One click runs any of them in the Playground.
 
 Connect an agent in a few lines:
 

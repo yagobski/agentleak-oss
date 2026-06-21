@@ -3,11 +3,32 @@ export type Badge = "critical" | "high" | "medium" | "low"
 
 export interface Scenario {
   id: string
+  name?: string
   domain: string
   description: string
   sensitive_data: string[]
-  expected_behavior: string[]
-  example_trace: string | null
+  expected_behavior?: string[]
+  example_trace?: string | null
+  tags?: string[]
+  difficulty?: string
+  source?: "builtin" | "custom" | "imported"
+  builtin?: boolean
+  pack_id?: string
+  origin_id?: string
+}
+
+export interface ScenarioDetail extends Scenario {
+  trace: Record<string, unknown>
+}
+
+export interface ScenarioPack {
+  id: string
+  name: string
+  description: string
+  source: string
+  format: string
+  count: number
+  imported_count: number
 }
 
 export interface ChannelRisk {
@@ -176,6 +197,21 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   scenarios: () => jsonFetch<Scenario[]>("/api/scenarios"),
+  scenario: (id: string) => jsonFetch<ScenarioDetail>(`/api/scenarios/${id}`),
+  createScenario: (body: Record<string, unknown>) =>
+    jsonFetch<Scenario>("/api/scenarios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteScenario: (id: string) =>
+    jsonFetch<{ deleted: boolean }>(`/api/scenarios/${id}`, { method: "DELETE" }),
+  scenarioPacks: () => jsonFetch<ScenarioPack[]>("/api/scenario-packs"),
+  importPack: (id: string) =>
+    jsonFetch<{ imported: number; skipped: number; pack_id: string }>(
+      `/api/scenario-packs/${id}/import`,
+      { method: "POST" },
+    ),
   example: (id: string) => jsonFetch<Record<string, unknown>>(`/api/example/${id}`),
   analyze: (payload: AnalyzePayload) =>
     jsonFetch<Report>("/api/analyze", {

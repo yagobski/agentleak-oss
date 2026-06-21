@@ -73,6 +73,8 @@ agentleak/
 ├── client.py              ★ AgentLeakClient — push traces from an agent (stdlib urllib)
 ├── detectors/             pii, secrets, healthcare, finance, hr, custom + registry
 ├── scenarios/             5 built-in scenarios + bundled example traces loader
+│   ├── convert.py         ★ external formats (AgentLeak spec / ai4privacy) -> traces
+│   └── packs/             ★ importable scenario packs (JSON bundles + loader)
 ├── examples/              Synthetic trace JSON (the scenarios' fixtures)
 ├── reporters/             json/html/markdown renderers + report.html.j2 template
 ├── integrations/          generic (TraceRecorder) + langchain/langgraph/crewai/autogen
@@ -156,6 +158,11 @@ privacy_score = round(100 × (1 − RI))
 10. **The SPA is served by a catch-all** in `web/app.py` (`/{full_path:path}` →
     `index.html`) so BrowserRouter deep links work; `/assets` is a separate mount
     and `/api/*` routes are registered first so they take precedence.
+11. **`scenarios/packs/` is a package, not a module.** `importlib.resources`
+    locates the bundled pack JSONs by package name, so the loader lives in
+    `packs/__init__.py` — never add a sibling `packs.py` (it shadows the package
+    and breaks `resources.files`). Pack JSONs are force-included in the wheel via
+    `pyproject.toml` `[tool.hatch.build.targets.wheel].artifacts`.
 
 ---
 
@@ -179,6 +186,19 @@ privacy_score = round(100 × (1 − RI))
 3. Register it in `agentleak/scenarios/__init__.py`.
 4. Add it to `tests/test_scenarios.py` (it asserts every example loads, leaks,
    and keeps the final output clean).
+
+### Add a scenario pack
+Drop a JSON file in `agentleak/scenarios/packs/` (`{id, name, source, format,
+scenarios: [...]}`). Entries may be AgentLeak specs, ai4privacy records, or raw
+traces — `normalize_upload` auto-detects each. Every bundled scenario must
+**leak** under the detectors (see `tests/test_packs.py`); filter out-of-scope
+records when generating the pack. The wheel artifacts glob already includes
+`agentleak/scenarios/packs/*.json`.
+
+### Support a new upload format
+Add a branch to `detect_format` and a converter in `scenarios/convert.py`,
+wire it into `normalize_upload`, and cover it in `tests/test_convert.py`. Keep
+converters pure and deterministic.
 
 ### Add a framework integration
 Subclass `agentleak/integrations/generic.py:TraceRecorder` and translate the
@@ -237,12 +257,41 @@ agent-type pickers and gets a Connect snippet automatically. The frontend never
 hardcodes the framework list — selects come from `/api/meta`, snippets from
 `/api/projects/{id}/connect`.
 
+## 6d. The scenario library (upload, packs, conversion)
+
+The **Scenarios** page is a managed library, not a static list. It merges the
+five packaged `Scenario`s (read-only, `source: builtin`) with user scenarios
+persisted in the store (`source: custom` for uploads, `source: imported` for
+pack imports).
+
+- **Conversion** (`scenarios/convert.py`). The analyzer consumes *traces*, but
+  external datasets don't carry one. `normalize_upload(data)` auto-detects the
+  format (`detect_format`) — an AgentLeak trace, an AgentLeak scenario *spec*
+  (objective + `private_vault`), an ai4privacy PII record, or an OSS scenario
+  object — and returns `(metadata, Trace)`. For specs/records it **synthesizes**
+  a leaky trace: the record arrives via `tool_response` (a source, not a leak),
+  then a subset leaks across disclosure channels; volume scales with the
+  scenario's adversary level (A0<A1<A2). Pure & deterministic.
+- **Packs** (`scenarios/packs/`). A *package* (not a module — see invariant 11)
+  of JSON bundles + a loader. `list_packs()` / `expand_pack(id)` convert every
+  entry via `normalize_upload`. Two ship: `agentleak_bench` (36 curated AgentLeak
+  scenarios) and `ai4privacy_probes` (17 PII records). Add a pack = drop a JSON
+  file here (force-included in the wheel via `pyproject.toml` artifacts).
+- **Store** (`store.create_scenario` / `list_scenarios` / `get_scenario` /
+  `delete_scenario` / `scenario_exists` / `count_pack_scenarios`). Imports are
+  idempotent on `(pack_id, origin_id)`.
+- **API** (`web/app.py`): `GET/POST /api/scenarios`, `GET/DELETE
+  /api/scenarios/{id}`, `GET /api/scenario-packs`,
+  `POST /api/scenario-packs/{id}/import`. `GET /api/example/{id}` and the
+  `scenario_id` field of `/api/analyze` & runs resolve **both** built-in and
+  stored scenarios (`_trace_from_payload` checks built-in first, then the store).
+
 ## 7. Dev commands
 
 ```bash
 # Python (run from repo root, in a venv)
 pip install -e ".[dev]"          # core + gui + test deps
-pytest                            # 135 tests
+pytest                            # 159 tests
 pytest --cov=agentleak --cov-fail-under=70
 ruff check agentleak/ tests/      # lint (must be clean)
 mypy agentleak/                   # types (must be clean)
@@ -295,5 +344,8 @@ once the package is reinstalled.
 | Add a platform endpoint | `web/app.py`, `src/lib/api.ts`, `tests/test_platform.py` |
 | Add an agent framework | `integrations/registry.py` (one `register()`; + optional adapter) |
 | Add/change a compliance framework | `core/compliance.py:FRAMEWORKS`, `tests/test_compliance.py` |
+| Add a scenario pack | drop JSON in `scenarios/packs/`, `tests/test_packs.py` |
+| Support a new upload format | `scenarios/convert.py` (`detect_format` + converter), `tests/test_convert.py` |
+| Change scenario persistence | `core/store.py` (scenarios table), `tests/test_store.py` |
 | Add a CLI command | `cli.py`, `tests/test_cli.py` |
 ```

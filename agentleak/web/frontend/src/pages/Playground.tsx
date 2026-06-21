@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { ScanLine } from "lucide-react"
 import { toast } from "sonner"
 import { api, type AnalyzePayload, type Report, type Scenario } from "@/lib/api"
@@ -11,6 +12,8 @@ export function Playground() {
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(false)
+  const [params] = useSearchParams()
+  const initialScenarioId = params.get("scenario") ?? undefined
 
   useEffect(() => {
     api.scenarios().then(setScenarios).catch((e) => toast.error(`Failed to load scenarios: ${e.message}`))
@@ -32,7 +35,12 @@ export function Playground() {
       <PageHeader title="Playground" description="Score any trace instantly — nothing is saved." />
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <Card className="lg:sticky lg:top-6 lg:h-[calc(100vh-7rem)] lg:overflow-hidden">
-          <ConfigPanel scenarios={scenarios} loading={loading} onAnalyze={onAnalyze} />
+          <ConfigPanel
+            scenarios={scenarios}
+            loading={loading}
+            onAnalyze={onAnalyze}
+            initialScenarioId={initialScenarioId}
+          />
         </Card>
         <div className="min-w-0">
           {report ? (

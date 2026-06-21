@@ -81,6 +81,23 @@ class Store:
                 )"""
             )
             c.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id, created_at)")
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS scenarios (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    domain TEXT NOT NULL DEFAULT 'custom',
+                    description TEXT DEFAULT '',
+                    sensitive_data TEXT NOT NULL DEFAULT '[]',
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    difficulty TEXT DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'custom',
+                    pack_id TEXT DEFAULT '',
+                    origin_id TEXT DEFAULT '',
+                    trace TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )"""
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS idx_scenarios_pack ON scenarios(pack_id, origin_id)")
 
     # -- projects -------------------------------------------------------
     def create_project(
@@ -204,6 +221,68 @@ class Store:
         with self._conn() as c:
             return c.execute("DELETE FROM runs WHERE id=?", (rid,)).rowcount > 0
 
+    # -- scenarios ------------------------------------------------------
+    def create_scenario(
+        self,
+        name: str,
+        trace: dict[str, Any],
+        *,
+        domain: str = "custom",
+        description: str = "",
+        sensitive_data: list[str] | None = None,
+        tags: list[str] | None = None,
+        difficulty: str = "",
+        source: str = "custom",
+        pack_id: str = "",
+        origin_id: str = "",
+    ) -> dict[str, Any]:
+        sid = _new_id("sce")
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO scenarios (id, name, domain, description, sensitive_data, tags,"
+                " difficulty, source, pack_id, origin_id, trace, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    sid, name.strip() or "Untitled scenario", domain, description,
+                    json.dumps(sensitive_data or []), json.dumps(tags or []),
+                    difficulty, source, pack_id, origin_id, json.dumps(trace), _now(),
+                ),
+            )
+        return self.get_scenario(sid)  # type: ignore[return-value]
+
+    def list_scenarios(self) -> list[dict[str, Any]]:
+        with self._conn() as c:
+            rows = c.execute("SELECT * FROM scenarios ORDER BY created_at DESC").fetchall()
+        return [self._scenario_row(r, with_trace=False) for r in rows]
+
+    def get_scenario(self, sid: str, *, with_trace: bool = True) -> dict[str, Any] | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM scenarios WHERE id=?", (sid,)).fetchone()
+        return self._scenario_row(row, with_trace=with_trace) if row else None
+
+    def delete_scenario(self, sid: str) -> bool:
+        with self._conn() as c:
+            return c.execute("DELETE FROM scenarios WHERE id=?", (sid,)).rowcount > 0
+
+    def scenario_exists(self, pack_id: str, origin_id: str) -> bool:
+        """True if a scenario from this pack/origin was already imported."""
+        if not origin_id:
+            return False
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM scenarios WHERE pack_id=? AND origin_id=? LIMIT 1",
+                (pack_id, origin_id),
+            ).fetchone()
+        return row is not None
+
+    def count_pack_scenarios(self, pack_id: str) -> int:
+        """How many scenarios from a given pack are currently imported."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) n FROM scenarios WHERE pack_id=?", (pack_id,)
+            ).fetchone()
+        return int(row["n"] or 0)
+
     # -- stats ----------------------------------------------------------
     def stats(self) -> dict[str, Any]:
         with self._conn() as c:
@@ -244,3 +323,23 @@ class Store:
             "blocked": bool(row["blocked"]),
             "leaked_secrets": row["leaked"],
         }
+
+    @staticmethod
+    def _scenario_row(row: sqlite3.Row, *, with_trace: bool) -> dict[str, Any]:
+        data = {
+            "id": row["id"],
+            "name": row["name"],
+            "domain": row["domain"],
+            "description": row["description"],
+            "sensitive_data": json.loads(row["sensitive_data"]),
+            "tags": json.loads(row["tags"]),
+            "difficulty": row["difficulty"],
+            "source": row["source"],
+            "pack_id": row["pack_id"],
+            "origin_id": row["origin_id"],
+            "created_at": row["created_at"],
+            "builtin": False,
+        }
+        if with_trace:
+            data["trace"] = json.loads(row["trace"])
+        return data
