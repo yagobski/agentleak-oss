@@ -1,20 +1,39 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { ArrowRight, FlaskConical, FolderKanban, ShieldAlert } from "lucide-react"
+import { Activity, ArrowRight, FlaskConical, FolderKanban, Gauge, ShieldAlert, ShieldCheck } from "lucide-react"
 import { api, type Project, type Stats } from "@/lib/api"
 import { riVerdict, verdictColor } from "@/lib/format"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/layout/AppShell"
 import { DashboardCharts } from "@/features/Charts"
 import { RunRow } from "@/features/RunRow"
 
-function Metric({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
+function SectionCard({
+  label,
+  value,
+  icon,
+  footer,
+  sub,
+}: {
+  label: string
+  value: React.ReactNode
+  icon: React.ReactNode
+  footer: React.ReactNode
+  sub?: string
+}) {
   return (
-    <Card className="p-4">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-1.5 font-mono text-2xl tnum leading-none">{value}</div>
-      {sub && <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>}
+    <Card>
+      <CardHeader className="relative space-y-0 p-4 pb-2">
+        <CardDescription className="text-[11px] font-medium uppercase tracking-wide">{label}</CardDescription>
+        <CardTitle className="font-mono text-3xl tabular-nums tnum">{value}</CardTitle>
+        <div className="absolute right-4 top-4 text-muted-foreground/70">{icon}</div>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <div className="text-sm font-medium">{footer}</div>
+        {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
+      </CardContent>
     </Card>
   )
 }
@@ -30,6 +49,8 @@ export function Dashboard() {
   }, [])
 
   const avg = stats?.avg_risk_index
+  const avgVerdict = avg != null ? riVerdict(avg) : null
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -44,34 +65,63 @@ export function Dashboard() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric label="Projects" value={stats?.projects ?? "—"} />
-        <Metric label="Runs" value={stats?.runs ?? "—"} />
-        <Metric
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SectionCard
+          label="Projects"
+          value={stats?.projects ?? "—"}
+          icon={<FolderKanban className="size-4" />}
+          footer="Agents under test"
+          sub="each scored independently"
+        />
+        <SectionCard
+          label="Runs"
+          value={stats?.runs ?? "—"}
+          icon={<Activity className="size-4" />}
+          footer="Analyses stored"
+          sub="locally, in SQLite"
+        />
+        <SectionCard
           label="Avg Risk Index"
           value={avg != null ? avg.toFixed(3) : "—"}
-          sub={avg != null ? "across all runs" : undefined}
+          icon={<Gauge className="size-4" />}
+          footer={
+            avgVerdict ? <span style={{ color: verdictColor(avgVerdict) }}>{avgVerdict}</span> : "No runs yet"
+          }
+          sub="across all runs"
         />
-        <Metric label="Blocked runs" value={stats?.blocked_runs ?? "—"} sub="would fail CI" />
+        <SectionCard
+          label="Blocked runs"
+          value={stats?.blocked_runs ?? "—"}
+          icon={
+            stats && stats.blocked_runs > 0 ? (
+              <ShieldAlert className="size-4 text-sev-l4" />
+            ) : (
+              <ShieldCheck className="size-4 text-sev-ok" />
+            )
+          }
+          footer="Would fail a CI gate"
+          sub="blocked = critical leak"
+        />
       </div>
 
       {stats && stats.recent_runs.length > 0 && (
-        <div className="mt-5">
+        <div className="mt-4">
           <DashboardCharts runs={stats.recent_runs} />
         </div>
       )}
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
         <Card>
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Recent runs
             </span>
+            {stats && stats.recent_runs.length > 0 && <Badge variant="muted">{stats.recent_runs.length}</Badge>}
           </div>
           <div className="divide-y divide-border">
             {!stats?.recent_runs.length && (
               <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-                No runs yet. Create a project and connect an agent, or try the{" "}
+                No runs yet. Create a project and run an agent, or try the{" "}
                 <Link to="/playground" className="text-primary underline-offset-2 hover:underline">
                   playground
                 </Link>
@@ -84,7 +134,7 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           <Card className="p-5">
             <div className="flex items-center gap-2 text-sm font-medium">
               <FlaskConical className="size-4 text-primary" /> Quick audit
@@ -112,7 +162,10 @@ export function Dashboard() {
                 >
                   <span className="truncate">{p.name}</span>
                   {p.avg_risk_index != null && (
-                    <span className="font-mono text-xs tnum" style={{ color: verdictColor(riVerdict(p.avg_risk_index)) }}>
+                    <span
+                      className="font-mono text-xs tnum"
+                      style={{ color: verdictColor(riVerdict(p.avg_risk_index)) }}
+                    >
                       {p.avg_risk_index.toFixed(2)}
                     </span>
                   )}

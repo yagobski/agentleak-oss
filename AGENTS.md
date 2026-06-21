@@ -368,6 +368,11 @@ once the package is reinstalled.
   (`src/index.css`), self-hosted fonts (Hanken Grotesk + JetBrains Mono), and
   CSS-based enter animations that degrade safely (the rendered value is always
   the final value — see `RiGauge` / the `arc-draw`/`bar-grow` keyframes).
+- The app shell follows the shadcn **blocks** dashboard pattern: `layout/AppShell.tsx`
+  wraps everything in `SidebarProvider` → collapsible `Sidebar` (variant `inset`)
+  + `SidebarInset` with a sticky `SiteHeader` (sidebar trigger + breadcrumb +
+  theme toggle). Sidebar colors come from the `--sidebar-*` tokens (both themes).
+  Pages render inside the inset and use `PageHeader` for their title/actions.
 
 ---
 

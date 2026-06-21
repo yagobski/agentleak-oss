@@ -28,7 +28,15 @@
     --sev-l2: 42 90% 42%;
     --sev-l1: 150 48% 36%;
     --sev-ok: 160 50% 38%;
-    --radius: 0.55rem;
+    --radius: 0.65rem;
+    --sidebar-background: 210 25% 97%;
+    --sidebar-foreground: 222 22% 28%;
+    --sidebar-primary: 190 78% 34%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 25% 92%;
+    --sidebar-accent-foreground: 222 25% 18%;
+    --sidebar-border: 220 16% 88%;
+    --sidebar-ring: 190 78% 38%;
   }
 
   /* Black theme — near-black zinc surfaces, high contrast (shadcn "black"). */
@@ -57,6 +65,14 @@
     --sev-l2: 45 93% 58%;
     --sev-l1: 152 58% 52%;
     --sev-ok: 160 62% 50%;
+    --sidebar-background: 240 6% 6%;
+    --sidebar-foreground: 240 5% 78%;
+    --sidebar-primary: 187 84% 53%;
+    --sidebar-primary-foreground: 200 80% 6%;
+    --sidebar-accent: 240 4% 13%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 240 4% 12%;
+    --sidebar-ring: 187 84% 53%;
   }
 
   * {

@@ -43,7 +43,7 @@ export function Settings() {
 
         <div className="flex flex-wrap gap-4 text-sm">
           <a
-            href="https://github.com/Privatris/AgentLeak"
+            href="https://github.com/yagobski/agentleak-oss"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-primary hover:underline"
