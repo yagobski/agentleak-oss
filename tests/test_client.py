@@ -60,3 +60,49 @@ def test_unreachable_server_raises_clean_error():
     c = AgentLeakClient(base_url="http://127.0.0.1:59999")  # nothing listening
     with pytest.raises(AgentLeakError):
         c.list_projects()
+
+
+def test_init_with_project_creates_and_resolves(monkeypatch):
+    server = FakeServer()
+    monkeypatch.setattr(AgentLeakClient, "_request", lambda self, m, p, b=None: server.request(m, p, b))
+    c = AgentLeakClient(project="bot", base_url="http://test")
+    assert c._project_id is not None
+    # submit with no explicit project uses the bound one
+    run = c.submit(Trace(run_id="r"))
+    assert run["id"] == "run_1"
+
+
+def test_submit_capture_and_runs(client: AgentLeakClient, monkeypatch):
+    client._project_id = "proj_0"
+    monkeypatch.setattr(client, "_request", lambda m, p, b=None: [] if m == "GET" else {"id": "run_1"})
+
+    class Cap:
+        trace = Trace(run_id="r")
+
+    assert client.submit_capture(Cap())["id"] == "run_1"
+    assert client.runs() == []
+
+
+def test_resolve_project_accepts_id(client: AgentLeakClient):
+    assert client._resolve_project("proj_abc") == "proj_abc"  # id passthrough, no lookup
+
+
+def test_request_http_error_parses_detail(monkeypatch):
+    import io
+    import urllib.error
+
+    def boom(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 404, "NF", {}, io.BytesIO(b'{"detail":"Project not found"}'))
+
+    monkeypatch.setattr("agentleak.client.urllib.request.urlopen", boom)
+    c = AgentLeakClient(base_url="http://test")
+    with pytest.raises(AgentLeakError, match="Project not found"):
+        c.list_projects()
+
+
+def test_connect_helper(monkeypatch):
+    monkeypatch.setattr(AgentLeakClient, "_request", lambda self, m, p, b=None: [{"id": "proj_0", "name": "x"}])
+    from agentleak.client import connect
+
+    c = connect("x", base_url="http://test")
+    assert c._project_id == "proj_0"

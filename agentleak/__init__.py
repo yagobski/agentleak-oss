@@ -17,7 +17,7 @@ Quick start::
 
 from __future__ import annotations
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 from .client import AgentLeakClient, connect
 from .core.agentrisk import AgentRiskReport, compute_agentrisk, dominates, level_for

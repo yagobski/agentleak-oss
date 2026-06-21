@@ -333,8 +333,8 @@ pre-made trace. `agentleak/agent/`:
 ```bash
 # Python (run from repo root, in a venv)
 pip install -e ".[dev]"          # core + gui + test deps
-pytest                            # 177 tests
-pytest --cov=agentleak --cov-fail-under=70
+pytest                            # 196 tests
+pytest --cov=agentleak --cov-fail-under=85   # CI gate is 85% (currently ~94%)
 ruff check agentleak/ tests/      # lint (must be clean)
 mypy agentleak/                   # types (must be clean)
 

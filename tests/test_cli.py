@@ -98,3 +98,46 @@ def test_run_fail_under_override(tmp_path):
         "--format", "json", "--fail-under", "101",
     ])
     assert result.exit_code == 1
+
+
+def test_init_force_overwrites(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    # Without --force it warns and keeps the file.
+    warned = runner.invoke(app, ["init", str(tmp_path)])
+    assert "already exists" in warned.stdout
+    # With --force it rewrites without warning.
+    forced = runner.invoke(app, ["init", str(tmp_path), "--force"])
+    assert forced.exit_code == 0
+    assert "already exists" not in forced.stdout
+
+
+def test_validate_invalid_trace(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not valid json")
+    result = runner.invoke(app, ["validate", str(tmp_path / "agentleak.yaml"), "--trace", str(bad)])
+    assert result.exit_code == 1
+    assert "invalid trace" in result.stdout
+
+
+def test_run_from_config_scenarios(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    result = runner.invoke(app, [
+        "run", "--config", str(tmp_path / "agentleak.yaml"),
+        "--output", str(tmp_path / "out"), "--format", "json", "--quiet",
+    ])
+    # The scaffolded config enables one scenario (healthcare) -> blocked -> exit 1.
+    assert result.exit_code in (0, 1)
+    assert list((tmp_path / "out").glob("*.json"))
+
+
+def test_run_bad_config_errors(tmp_path):
+    bad = tmp_path / "agentleak.yaml"
+    bad.write_text("detectors: [this is not valid structure")
+    result = runner.invoke(app, ["run", "--config", str(bad), "--scenario", "hr_employee_case"])
+    assert result.exit_code == 2
+
+
+def test_report_missing_input_errors():
+    result = runner.invoke(app, ["report", "--input", "/nonexistent/report.json"])
+    assert result.exit_code == 2

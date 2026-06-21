@@ -26,16 +26,34 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Lint (ruff)
-        run: ruff check agentleak/
+        run: ruff check agentleak/ tests/
 
       - name: Type check (mypy)
         run: mypy agentleak/
 
-      - name: Test (pytest + coverage)
-        run: pytest --cov=agentleak --cov-report=term-missing --cov-fail-under=70
+      - name: Test (pytest + coverage gate)
+        run: pytest --cov=agentleak --cov-report=term-missing --cov-fail-under=85
 
       - name: Smoke test the CLI
         run: |
           agentleak version
           agentleak run --scenario healthcare_patient_summary --output /tmp/reports --format json || true
           test -f /tmp/reports/run_healthcare_001.json
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: agentleak/web/frontend/package-lock.json
+
+      - name: Install & build (type-checks via tsc, then Vite build)
+        working-directory: agentleak/web/frontend
+        run: |
+          npm ci
+          npm run build

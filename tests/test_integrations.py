@@ -38,6 +38,34 @@ def test_langchain_callback_duck_typed():
     assert "log" in channels
 
 
+def test_langchain_agent_action_and_llm_end():
+    cb = LangChainCallback(run_id="r")
+
+    class Action:
+        tool = "send_email"
+        tool_input = {"to": "x@y.com", "body": "ssn 123-45-6789"}
+
+    class Gen:
+        text = "Final summary for the user."
+
+    class LLMResult:
+        generations = [[Gen()]]
+
+    cb.on_agent_action(Action())
+    cb.on_llm_end(LLMResult())
+    channels = {e.channel_value for e in cb.trace.events}
+    assert "inter_agent_message" in channels
+    assert cb.trace.events[-1].channel_value == "final_output"
+    result = cb.analyze()
+    assert any(f.data_type == "ssn" for f in result.findings)
+
+
+def test_langchain_llm_end_falls_back_to_str():
+    cb = LangChainCallback(run_id="r")
+    cb.on_llm_end("plain string response")
+    assert cb.trace.events[-1].searchable_text == "plain string response"
+
+
 def test_langgraph_trace_from_state():
     state = {"messages": [
         {"role": "agent", "content": "lookup customer with email a@b.com"},
