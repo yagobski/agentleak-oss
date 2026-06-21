@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from . import compliance as _compliance
+from . import flow as _flow
 from .agentrisk import BASELINE_CHANNELS, LEVEL_LABELS
 from .detector import Finding, Severity
 from .scoring import Score, badge_for_level
@@ -44,6 +45,9 @@ class AnalysisResult:
     fail_below: int = 40
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     event_count: int = 0
+    # Lightweight event log ({event_id, channel, source, target}) for building
+    # the leak-path and topology views. Filled by the runner.
+    events: list[dict[str, Any]] = field(default_factory=list)
 
     # -- convenience accessors (used by the SDK and reporters) -----------
     @property
@@ -142,6 +146,10 @@ class AnalysisResult:
             "agentrisk": agentrisk,
         }
         data["compliance"] = _compliance.evaluate(data)
+        data["flow"] = _flow.build_topology(self.events, self.findings)
+        data["leak_paths"] = _flow.build_leak_paths(
+            self.events, self.findings, redact=self.redact_values
+        )
         return data
 
     def _finding_dict(self, f: Finding) -> dict[str, Any]:

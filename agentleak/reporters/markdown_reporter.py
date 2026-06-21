@@ -81,6 +81,22 @@ def render(data: dict[str, Any]) -> str:
                 a(f"- **Recommendation:** {f['recommendation']}")
             a("")
 
+    leak_paths = data.get("leak_paths", [])
+    if leak_paths:
+        a("## Leak paths")
+        a("")
+        a("_Where each disclosed secret entered the system and how it propagated across agents._")
+        a("")
+        for p in leak_paths:
+            chain = " → ".join(f"{s['source'] or '?'}:{s['channel']}" for s in p["steps"])
+            agents = f" · agents: {', '.join(p['agents'])}" if p.get("agents") else ""
+            a(
+                f"- **{p['level_label']} {p['data_type']}** (`{p['value']}`) — entered via "
+                f"`{p.get('entered_via') or 'unknown'}`, {p['leak_count']} disclosure(s){agents}\n"
+                f"  - path: {chain}"
+            )
+        a("")
+
     recs = data.get("recommendations", [])
     if recs:
         a("## Recommendations")

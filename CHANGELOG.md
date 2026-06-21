@@ -4,6 +4,20 @@ All notable changes to AgentLeak OSS are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-06-21
+
+### Added
+- **Leak flow & agent topology** (`core/flow.py`) — debugging views for
+  multi-agent leaks:
+  - **Leak paths**: each disclosed secret is traced from where it entered the
+    system (a source channel) through every agent that handled it to each point
+    of disclosure, so you can see exactly where a leak originated and how it
+    propagated. Values stay redacted.
+  - **Agent topology**: a behavioral graph of the agent — participants as nodes
+    (inputs → agents → sinks), channels as edges, leak-carrying edges flagged by
+    severity. Rendered as a diagram in the new **Leak flow** tab and embedded in
+    the report (`report.flow` / `report.leak_paths`) and the Markdown export.
+
 ## [0.5.0] — 2026-06-21
 
 Production-hardening release.
@@ -63,6 +77,7 @@ First public release.
 - Local platform: SQLite persistence (projects + runs), SDK client, compare/stats.
 - Web GUI (React + shadcn/ui), CLI (`init/run/report/validate/scenarios/serve`).
 
+[0.6.0]: https://github.com/yagobski/agentleak-oss/releases/tag/v0.6.0
 [0.5.0]: https://github.com/yagobski/agentleak-oss/releases/tag/v0.5.0
 [0.4.1]: https://github.com/yagobski/agentleak-oss/releases/tag/v0.4.1
 [0.4.0]: https://github.com/yagobski/agentleak-oss/releases/tag/v0.4.0

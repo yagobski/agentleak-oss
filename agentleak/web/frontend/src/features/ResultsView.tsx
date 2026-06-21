@@ -1,5 +1,5 @@
 import { type ReactNode } from "react"
-import { Download, FileJson, FileText, Lightbulb, ListChecks, ScrollText, ShieldAlert, ShieldCheck } from "lucide-react"
+import { Download, FileJson, FileText, Lightbulb, ListChecks, ScrollText, ShieldAlert, ShieldCheck, Workflow } from "lucide-react"
 import { toast } from "sonner"
 import { api, type Report } from "@/lib/api"
 import { badgeChipClass, badgeColor, download, keyInsight, LEVEL_META } from "@/lib/format"
@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ComplianceView } from "./ComplianceView"
+import { FlowView } from "./FlowView"
 import { RiGauge } from "./RiGauge"
 
 function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
@@ -34,6 +35,8 @@ export function ResultsView({ report }: { report: Report }) {
   const insight = keyInsight(report)
   const maxRi = Math.max(...report.channel_risks.map((c) => c.ri), 0.0001)
   const atRisk = report.compliance?.summary.controls_at_risk ?? 0
+  const leakPaths = report.leak_paths?.length ?? 0
+  const hasFlow = (report.flow?.nodes.length ?? 0) > 0
 
   async function onExport(fmt: "json" | "html" | "markdown") {
     try {
@@ -139,6 +142,12 @@ export function ResultsView({ report }: { report: Report }) {
           <TabsTrigger value="overview">
             <ScrollText className="size-3.5" /> Overview
           </TabsTrigger>
+          {hasFlow && (
+            <TabsTrigger value="flow">
+              <Workflow className="size-3.5" /> Leak flow
+              <TabCount n={leakPaths} tone="danger" />
+            </TabsTrigger>
+          )}
           <TabsTrigger value="findings">
             <ListChecks className="size-3.5" /> Findings
             <TabCount n={report.findings.length} tone="danger" />
@@ -202,6 +211,13 @@ export function ResultsView({ report }: { report: Report }) {
             </div>
           </Card>
         </TabsContent>
+
+        {/* Leak flow — topology + propagation paths */}
+        {hasFlow && (
+          <TabsContent value="flow">
+            <FlowView report={report} />
+          </TabsContent>
+        )}
 
         {/* Findings */}
         <TabsContent value="findings">

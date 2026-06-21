@@ -119,6 +119,15 @@ class AgentLeakRunner:
             block_on_critical=self._block_on_critical,
             fail_below=self._fail_below,
             event_count=len(trace.events),
+            events=[
+                {
+                    "event_id": e.event_id,
+                    "channel": e.channel_value,
+                    "source": e.source,
+                    "target": e.target,
+                }
+                for e in trace.events
+            ],
         )
 
 

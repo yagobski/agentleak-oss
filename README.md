@@ -61,6 +61,11 @@ self-contained (no CDN, self-hosted fonts), with a left-sidebar navigation:
 - **Runs** — every analysis is stored locally (SQLite); view, **compare**
   (weight-robust dominance), export (JSON / MD / HTML), delete.
 - **Dashboard** — average Risk Index, blocked runs, recent activity.
+- **Leak flow & topology** — every run renders an **agent topology diagram**
+  (who talks to whom, leak-carrying edges flagged by severity) and **leak paths**
+  that trace each secret from where it entered the system through every agent that
+  handled it to where it was disclosed — so you can debug *where* a multi-agent
+  leak originated.
 - **Playground** — score any trace instantly, nothing saved.
 - **Scenarios** — a managed test library: search/filter built-in scenarios,
   **upload** your own (AgentLeak traces, AgentLeak specs, or ai4privacy records —

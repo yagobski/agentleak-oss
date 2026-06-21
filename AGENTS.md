@@ -69,6 +69,7 @@ agentleak/
 │   ├── config.py          agentleak.yaml model + DEFAULT_CONFIG_YAML
 │   ├── store.py           ★ SQLite store: projects + runs ($AGENTLEAK_HOME)
 │   ├── compliance.py      ★ map findings -> GDPR/Law25/NIST AI RMF/OWASP/EU AI Act
+│   ├── flow.py            ★ leak provenance paths + agent topology (debugging views)
 │   └── scenario.py        Scenario dataclass
 ├── client.py              ★ AgentLeakClient — push traces from an agent (stdlib urllib)
 ├── agent/                 ★ live agent runner: execute a real LLM agent vs a scenario
@@ -328,12 +329,36 @@ pre-made trace. `agentleak/agent/`:
   (`_safe_project` → `api_key:"", api_key_set:bool`) and **preserved** on PATCH
   when the client sends a blank key.
 
+## 6f. Leak flow & agent topology (debugging views)
+
+`core/flow.py` turns a run into two debugging views, both pure functions over the
+run's lightweight `events` (`{event_id, channel, source, target}`, filled by the
+runner onto `AnalysisResult.events`) and its `findings`:
+
+- **`build_leak_paths`** — groups findings by their raw secret value, orders the
+  occurrences by event, and emits, per secret, the chain from where it *entered*
+  (a `BASELINE_CHANNELS` source like `tool_response`) through each agent that
+  handled it to where it was *disclosed*. Only secrets with ≥1 disclosure are
+  included; the output is redacted (correlation is internal). This is how you
+  trace, in a multi-agent run, **where a leak originated and how it propagated**.
+- **`build_topology`** — the participant graph: nodes classified into lanes
+  (inputs `user`/`tool` → `agent` → sinks `memory`/`log`/`file`/`external`/`output`
+  via `_CHANNEL_ROLES`), edges aggregated per `(source, target, channel)` and
+  flagged with the max leaked severity level. A behavioral model of the agent.
+
+Both are embedded in `report.to_dict()` as `report["leak_paths"]` and
+`report["flow"]`, rendered in the GUI's **Leak flow** tab
+(`features/FlowView.tsx` — hand-rolled SVG diagram + per-secret chains) and in the
+Markdown export. Old stored runs created before this feature simply lack the keys
+(the UI guards on `flow.nodes.length`). To change classification, edit
+`_CHANNEL_ROLES` / `_KIND_LANE`; cover it in `tests/test_flow.py`.
+
 ## 7. Dev commands
 
 ```bash
 # Python (run from repo root, in a venv)
 pip install -e ".[dev]"          # core + gui + test deps
-pytest                            # 196 tests
+pytest                            # 203 tests
 pytest --cov=agentleak --cov-fail-under=85   # CI gate is 85% (currently ~94%)
 ruff check agentleak/ tests/      # lint (must be clean)
 mypy agentleak/                   # types (must be clean)
@@ -397,5 +422,6 @@ once the package is reinstalled.
 | Change how the live agent behaves | `agent/runner.py` (tools, loop), `tests/test_agent.py` |
 | Add an LLM provider quirk | `agent/llm.py` (`_KEY_ENV_BY_HOST`, request shape) |
 | Run an agent from the API | `web/app.py:execute_agent`, `tests/test_platform.py` |
+| Change leak-path / topology logic | `core/flow.py`, `tests/test_flow.py` (+ `features/FlowView.tsx`) |
 | Add a CLI command | `cli.py`, `tests/test_cli.py` |
 ```

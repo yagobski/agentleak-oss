@@ -86,6 +86,8 @@ export interface Report {
   findings: Finding[]
   recommendations: string[]
   compliance: Compliance
+  flow?: Flow
+  leak_paths?: LeakPath[]
 }
 
 export interface CustomRule {
@@ -188,6 +190,50 @@ export interface FrameworkResult {
 export interface Compliance {
   frameworks: FrameworkResult[]
   summary: { total: number; compliant: number; non_compliant: number; controls_at_risk: number }
+}
+
+export interface FlowNode {
+  id: string
+  kind: string
+  lane: number
+}
+
+export interface FlowEdge {
+  source: string
+  target: string
+  channel: string
+  count: number
+  leaked: boolean
+  level: number
+  level_label: string
+}
+
+export interface Flow {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+export interface LeakStep {
+  event_id: string
+  channel: string
+  source: string
+  target: string
+  kind: "source" | "leak"
+  level: number
+  level_label: string
+}
+
+export interface LeakPath {
+  data_type: string
+  value: string
+  level: number
+  level_label: string
+  entered_via: string | null
+  origin: LeakStep
+  leak_count: number
+  channels: string[]
+  agents: string[]
+  steps: LeakStep[]
 }
 
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
