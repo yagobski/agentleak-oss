@@ -98,6 +98,16 @@ class Store:
                 )"""
             )
             c.execute("CREATE INDEX IF NOT EXISTS idx_scenarios_pack ON scenarios(pack_id, origin_id)")
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Additive schema migrations for DBs created by earlier versions."""
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(scenarios)")}
+        if "spec" not in cols:
+            # Original AgentLeak scenario spec (objective + vault + tools), if any,
+            # so the scenario can be executed live by a real agent.
+            c.execute("ALTER TABLE scenarios ADD COLUMN spec TEXT DEFAULT ''")
 
     # -- projects -------------------------------------------------------
     def create_project(
@@ -235,17 +245,19 @@ class Store:
         source: str = "custom",
         pack_id: str = "",
         origin_id: str = "",
+        spec: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         sid = _new_id("sce")
         with self._conn() as c:
             c.execute(
                 "INSERT INTO scenarios (id, name, domain, description, sensitive_data, tags,"
-                " difficulty, source, pack_id, origin_id, trace, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                " difficulty, source, pack_id, origin_id, trace, spec, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     sid, name.strip() or "Untitled scenario", domain, description,
                     json.dumps(sensitive_data or []), json.dumps(tags or []),
-                    difficulty, source, pack_id, origin_id, json.dumps(trace), _now(),
+                    difficulty, source, pack_id, origin_id, json.dumps(trace),
+                    json.dumps(spec) if spec else "", _now(),
                 ),
             )
         return self.get_scenario(sid)  # type: ignore[return-value]
@@ -326,6 +338,7 @@ class Store:
 
     @staticmethod
     def _scenario_row(row: sqlite3.Row, *, with_trace: bool) -> dict[str, Any]:
+        spec_raw = row["spec"] if "spec" in row.keys() else ""
         data = {
             "id": row["id"],
             "name": row["name"],
@@ -339,7 +352,9 @@ class Store:
             "origin_id": row["origin_id"],
             "created_at": row["created_at"],
             "builtin": False,
+            "has_spec": bool(spec_raw),
         }
         if with_trace:
             data["trace"] = json.loads(row["trace"])
+            data["spec"] = json.loads(spec_raw) if spec_raw else None
         return data

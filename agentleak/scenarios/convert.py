@@ -301,6 +301,7 @@ def normalize_upload(data: Any) -> tuple[dict[str, Any], Trace]:
             "sensitive_data": _sensitive_data_types(records),
             "tags": list(data.get("tags", [])),
             "difficulty": data.get("difficulty", ""),
+            "spec": data,  # keep the spec so the scenario can be run live
         }, trace
     if fmt == "ai4privacy":
         trace = ai4privacy_to_trace(data)

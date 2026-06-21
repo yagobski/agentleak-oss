@@ -103,6 +103,22 @@ def test_scenario_crud(store: Store):
     assert store.get_scenario(sc["id"]) is None
 
 
+def test_scenario_stores_and_returns_spec(store: Store):
+    spec = {"scenario_id": "s1", "objective": {"user_request": "do it"}, "private_vault": {"records": []}}
+    sc = store.create_scenario("S", _trace(), spec=spec)
+    assert sc["has_spec"] is True
+    assert store.get_scenario(sc["id"])["spec"] == spec
+    # summaries advertise has_spec without carrying the body
+    summary = store.list_scenarios()[0]
+    assert summary["has_spec"] is True and "spec" not in summary
+
+
+def test_scenario_without_spec_has_none(store: Store):
+    sc = store.create_scenario("S", _trace())
+    assert sc["has_spec"] is False
+    assert store.get_scenario(sc["id"])["spec"] is None
+
+
 def test_scenario_import_idempotency_helpers(store: Store):
     assert store.scenario_exists("pack_a", "origin_1") is False
     assert store.count_pack_scenarios("pack_a") == 0

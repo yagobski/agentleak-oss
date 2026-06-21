@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import __version__
+from ..agent import AgentRunError, LLMConfig, OpenAICompatLLM, build_run_context, run_scenario
 from ..core.agentrisk import dominates
 from ..core.config import Config
 from ..core.report import AnalysisResult
@@ -119,6 +120,18 @@ def _level_profile_ints(report: dict[str, Any]) -> dict[int, int]:
     return {n: int(lp.get(f"L{n}", 0)) for n in (1, 2, 3, 4)}
 
 
+def _safe_project(project: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Strip the agent API key from a project before returning it over HTTP."""
+    if not project:
+        return project
+    config = project.get("config") or {}
+    agent = config.get("agent")
+    if isinstance(agent, dict) and "api_key" in agent:
+        safe_agent = {**agent, "api_key": "", "api_key_set": bool(agent.get("api_key"))}
+        return {**project, "config": {**config, "agent": safe_agent}}
+    return project
+
+
 # ----------------------------------------------------------------------
 def create_app(store: Store | None = None):  # noqa: ANN201
     try:
@@ -173,6 +186,7 @@ def create_app(store: Store | None = None):  # noqa: ANN201
             tags=payload.get("tags") or meta["tags"],
             difficulty=payload.get("difficulty") or meta.get("difficulty", ""),
             source="custom",
+            spec=meta.get("spec"),
         )
 
     @app.get("/api/scenarios/{scenario_id}")
@@ -231,6 +245,7 @@ def create_app(store: Store | None = None):  # noqa: ANN201
                 sensitive_data=meta["sensitive_data"], tags=meta["tags"],
                 difficulty=meta.get("difficulty", ""),
                 source="imported", pack_id=pack_id, origin_id=origin,
+                spec=meta.get("spec"),
             )
             imported += 1
         return {"imported": imported, "skipped": skipped, "pack_id": pack_id}
@@ -279,10 +294,10 @@ def create_app(store: Store | None = None):  # noqa: ANN201
     # -- projects ------------------------------------------------------
     @app.get("/api/projects")
     def list_projects() -> list[dict[str, Any]]:
-        return db.list_projects()
+        return [_safe_project(p) for p in db.list_projects()]  # type: ignore[misc]
 
     @app.post("/api/projects")
-    def create_project(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def create_project(payload: dict[str, Any] = Body(...)) -> dict[str, Any] | None:
         name = str(payload.get("name", "")).strip()
         if not name:
             raise HTTPException(status_code=400, detail="Project name is required.")
@@ -291,33 +306,42 @@ def create_app(store: Store | None = None):  # noqa: ANN201
             "vault": payload.get("vault"),
             "custom_detectors": payload.get("custom_detectors"),
             "redact": payload.get("redact", True),
+            "agent": payload.get("agent"),
         }
-        return db.create_project(
+        return _safe_project(db.create_project(
             name,
             agent_type=payload.get("agent_type", "generic"),
             description=payload.get("description", ""),
             config={k: v for k, v in config.items() if v is not None},
-        )
+        ))
 
     @app.get("/api/projects/{pid}")
-    def get_project(pid: str) -> dict[str, Any]:
+    def get_project(pid: str) -> dict[str, Any] | None:
         p = db.get_project(pid)
         if not p:
             raise HTTPException(status_code=404, detail="Project not found")
-        return p
+        return _safe_project(p)
 
     @app.patch("/api/projects/{pid}")
-    def update_project(pid: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def update_project(pid: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any] | None:
+        config = payload.get("config")
+        # Preserve a previously-stored agent key when the client sends a blank one.
+        if isinstance(config, dict) and isinstance(config.get("agent"), dict):
+            if not config["agent"].get("api_key"):
+                existing = db.get_project(pid) or {}
+                prior = (existing.get("config") or {}).get("agent") or {}
+                if prior.get("api_key"):
+                    config["agent"]["api_key"] = prior["api_key"]
         p = db.update_project(
             pid,
             name=payload.get("name"),
             agent_type=payload.get("agent_type"),
             description=payload.get("description"),
-            config=payload.get("config"),
+            config=config,
         )
         if not p:
             raise HTTPException(status_code=404, detail="Project not found")
-        return p
+        return _safe_project(p)
 
     @app.delete("/api/projects/{pid}")
     def delete_project(pid: str) -> dict[str, bool]:
@@ -356,6 +380,57 @@ def create_app(store: Store | None = None):  # noqa: ANN201
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return db.create_run(pid, result.to_dict(), source=payload.get("source", "manual"))
+
+    def _scenario_detail(sid: str) -> dict[str, Any] | None:
+        if sid in SCENARIOS:
+            detail = _builtin_scenario_summary(SCENARIOS[sid])
+            detail["trace"] = load_example_trace(sid).to_dict()
+            detail["spec"] = None
+            return detail
+        return db.get_scenario(sid)
+
+    @app.post("/api/projects/{pid}/execute")
+    def execute_agent(pid: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Run the project's agent against a scenario and store the captured run."""
+        project = db.get_project(pid)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        scenario = _scenario_detail(str(payload.get("scenario_id", "")))
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        ctx = build_run_context(scenario)
+        if not ctx.has_data:
+            raise HTTPException(
+                status_code=400,
+                detail="This scenario has no private data for an agent to handle.",
+            )
+
+        agent_cfg = (project["config"] or {}).get("agent") or {}
+        mode = payload.get("mode") or ("live" if agent_cfg.get("model") else "scripted")
+        llm = None
+        if mode == "live":
+            if not agent_cfg.get("base_url") or not agent_cfg.get("model"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Configure the agent endpoint (base URL + model) in project Settings first.",
+                )
+            llm = OpenAICompatLLM(LLMConfig(
+                base_url=str(agent_cfg["base_url"]),
+                model=str(agent_cfg["model"]),
+                api_key=str(agent_cfg.get("api_key", "")),
+            ))
+        try:
+            trace = run_scenario(ctx, llm=llm)
+        except AgentRunError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        data = _config_data(project["config"])
+        data["project"] = {"name": project["name"]}
+        cfg = Config.from_dict(data) if data else None
+        result = AgentLeakRunner(cfg).analyze(trace)
+        source = f"agent:{llm.model}" if llm else "agent:scripted"
+        return db.create_run(pid, result.to_dict(), source=source)
 
     @app.get("/api/runs/{rid}")
     def get_run(rid: str) -> dict[str, Any]:

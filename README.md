@@ -52,8 +52,12 @@ agentleak serve              # opens http://127.0.0.1:8000
 A full local platform — React + Tailwind + **shadcn/ui** (black theme), fully
 self-contained (no CDN, self-hosted fonts), with a left-sidebar navigation:
 
-- **Projects** — each is an agent under test; pick its framework and **connect it
-  via the SDK** (the Connect tab generates a copy-paste snippet).
+- **Projects** — each is an agent under test. **Run a real agent** against any
+  scenario: point the project at an OpenAI-compatible endpoint (OpenAI /
+  OpenRouter / Ollama / vLLM) and AgentLeak executes the model with a toolbox,
+  captures the trace it actually produces, and scores it — or use the built-in
+  scripted agent offline. You can also **connect your own agent via the SDK**
+  (the Connect tab generates a copy-paste snippet).
 - **Runs** — every analysis is stored locally (SQLite); view, **compare**
   (weight-robust dominance), export (JSON / MD / HTML), delete.
 - **Dashboard** — average Risk Index, blocked runs, recent activity.
@@ -199,9 +203,13 @@ See [docs/integrations.md](docs/integrations.md).
 
 ## Privacy guarantees
 
-- 100% local — traces are never sent anywhere.
+- **Detection & scoring are 100% local** — regex/dict detectors, a closed-form
+  score, no LLM, no telemetry. Traces are analyzed in-process.
 - Reports show **masked** values (`TR********78`) by default.
 - Raw traces are not stored unless you opt in (`privacy.store_raw_traces`).
+- The **live agent runner is opt-in**: only when you explicitly run a project's
+  LLM agent does AgentLeak send that scenario to *your* configured endpoint. The
+  default **scripted** agent and all analysis stay fully offline.
 
 ## Docs
 
@@ -209,6 +217,7 @@ See [docs/integrations.md](docs/integrations.md).
 - [Concepts](docs/concepts.md)
 - [Scoring (AgentRisk)](docs/scoring.md)
 - [Scenarios](docs/scenarios.md)
+- [Running agents (live & scripted)](docs/agents.md)
 - [Integrations](docs/integrations.md)
 - [Platform (projects, runs, SDK)](docs/platform.md)
 - [Compliance frameworks](docs/compliance.md)

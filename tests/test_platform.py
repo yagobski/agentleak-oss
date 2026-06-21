@@ -162,3 +162,52 @@ def test_builtin_scenario_detail_has_trace(client: TestClient):
     detail = client.get("/api/scenarios/healthcare_patient_summary").json()
     assert detail["builtin"] is True
     assert detail["trace"]["events"]
+
+
+def test_imported_scenarios_store_spec(client: TestClient):
+    client.post("/api/scenario-packs/agentleak_bench/import")
+    scs = client.get("/api/scenarios").json()
+    assert any(s["source"] == "imported" and s.get("has_spec") for s in scs)
+
+
+# -- live agent execution ----------------------------------------------
+def test_execute_scripted_agent(client: TestClient):
+    pid = client.post("/api/projects", json={"name": "Bot"}).json()["id"]
+    run = client.post(f"/api/projects/{pid}/execute", json={"scenario_id": "healthcare_patient_summary"}).json()
+    assert run["source"] == "agent:scripted"
+    assert run["report"]["summary"]["leaked_secrets"] > 0
+
+
+def test_execute_live_without_config_400(client: TestClient):
+    pid = client.post("/api/projects", json={"name": "Bot"}).json()["id"]
+    r = client.post(f"/api/projects/{pid}/execute", json={"scenario_id": "healthcare_patient_summary", "mode": "live"})
+    assert r.status_code == 400
+
+
+def test_execute_unknown_scenario_404(client: TestClient):
+    pid = client.post("/api/projects", json={"name": "Bot"}).json()["id"]
+    assert client.post(f"/api/projects/{pid}/execute", json={"scenario_id": "nope"}).status_code == 404
+
+
+def test_agent_api_key_is_redacted(client: TestClient):
+    pid = client.post("/api/projects", json={
+        "name": "Bot",
+        "agent": {"base_url": "https://openrouter.ai/api/v1", "model": "m", "api_key": "SECRET"},
+    }).json()["id"]
+    proj = client.get(f"/api/projects/{pid}").json()
+    agent = proj["config"]["agent"]
+    assert agent["api_key"] == "" and agent["api_key_set"] is True
+
+
+def test_blank_api_key_preserves_stored_key(client: TestClient):
+    pid = client.post("/api/projects", json={
+        "name": "Bot",
+        "agent": {"base_url": "https://openrouter.ai/api/v1", "model": "m1", "api_key": "SECRET"},
+    }).json()["id"]
+    # update the model with a blank key — the stored key must survive
+    client.patch(f"/api/projects/{pid}", json={
+        "config": {"agent": {"base_url": "https://openrouter.ai/api/v1", "model": "m2", "api_key": ""}},
+    })
+    proj = client.get(f"/api/projects/{pid}").json()
+    assert proj["config"]["agent"]["model"] == "m2"
+    assert proj["config"]["agent"]["api_key_set"] is True

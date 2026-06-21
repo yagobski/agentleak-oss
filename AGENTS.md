@@ -71,6 +71,10 @@ agentleak/
 │   ├── compliance.py      ★ map findings -> GDPR/Law25/NIST AI RMF/OWASP/EU AI Act
 │   └── scenario.py        Scenario dataclass
 ├── client.py              ★ AgentLeakClient — push traces from an agent (stdlib urllib)
+├── agent/                 ★ live agent runner: execute a real LLM agent vs a scenario
+│   ├── context.py         RunContext (from a stored spec, or derived from a trace)
+│   ├── llm.py             OpenAI-compatible chat client (stdlib urllib; optional)
+│   └── runner.py          agentic loop -> Trace (live) + scripted offline fallback
 ├── detectors/             pii, secrets, healthcare, finance, hr, custom + registry
 ├── scenarios/             5 built-in scenarios + bundled example traces loader
 │   ├── convert.py         ★ external formats (AgentLeak spec / ai4privacy) -> traces
@@ -163,6 +167,15 @@ privacy_score = round(100 × (1 − RI))
     `packs/__init__.py` — never add a sibling `packs.py` (it shadows the package
     and breaks `resources.files`). Pack JSONs are force-included in the wheel via
     `pyproject.toml` `[tool.hatch.build.targets.wheel].artifacts`.
+12. **The LLM stays optional and out of the core.** `agentleak/agent/llm.py` is
+    stdlib-only and is only invoked on an explicit live run; nothing in the
+    analysis path imports it implicitly. Never make the core depend on a model.
+    Agent API keys are secrets: redact them in responses (`_safe_project`) and
+    never log them.
+13. **Store migrations are additive.** `_init` uses `CREATE TABLE IF NOT EXISTS`;
+    new columns on existing tables go through `_migrate` (PRAGMA-checked
+    `ALTER TABLE ADD COLUMN`) so older local DBs keep working. `_scenario_row`
+    tolerates a missing `spec` column for the same reason.
 
 ---
 
@@ -286,12 +299,41 @@ pack imports).
   `scenario_id` field of `/api/analyze` & runs resolve **both** built-in and
   stored scenarios (`_trace_from_payload` checks built-in first, then the store).
 
+## 6e. Live agent execution (run a real agent against a scenario)
+
+A *run* can now come from actually **executing an agent**, not just analyzing a
+pre-made trace. `agentleak/agent/`:
+
+- `context.build_run_context(scenario)` → a `RunContext` (task + private records
+  + privacy instruction). Uses a stored **spec** if present, else **derives** the
+  task from the trace's `user_input` and the records from its `tool_response`
+  events — so every scenario is runnable.
+- `runner.run_scenario(ctx, llm=None)` → a `Trace`. With an `llm` it runs a real
+  **agentic loop** (`_live_run`): the model is given a toolbox (`get_records`,
+  `save_memory`, `send_message`, `write_file`, `call_external_api`, `log_event`)
+  and every tool it calls is recorded on the matching channel; the final message
+  is `final_output`. Whether it leaks is the model's choice — the audit is real.
+  Without an `llm` it runs the deterministic `_scripted_run` (reuses
+  `scenario_spec_to_trace`) for offline/CI use.
+- `llm.OpenAICompatLLM` — a stdlib-only (`urllib`) chat-completions client for any
+  OpenAI-compatible endpoint (OpenAI, OpenRouter, Ollama, vLLM…). **No new
+  dependency; never imported by the core** — only reached when a user runs live.
+  Key resolution: explicit config key → conventional env var.
+- **API**: `POST /api/projects/{id}/execute` `{scenario_id, mode?}`. `mode`
+  defaults to `live` if the project has an agent endpoint configured, else
+  `scripted`. The project's detectors/vault score the captured trace; the run is
+  stored with `source` = `agent:<model>` / `agent:scripted`.
+- **Project agent config** lives in `project.config.agent` =
+  `{base_url, model, api_key}`. The key is **redacted** in every API response
+  (`_safe_project` → `api_key:"", api_key_set:bool`) and **preserved** on PATCH
+  when the client sends a blank key.
+
 ## 7. Dev commands
 
 ```bash
 # Python (run from repo root, in a venv)
 pip install -e ".[dev]"          # core + gui + test deps
-pytest                            # 159 tests
+pytest                            # 177 tests
 pytest --cov=agentleak --cov-fail-under=70
 ruff check agentleak/ tests/      # lint (must be clean)
 mypy agentleak/                   # types (must be clean)
@@ -346,6 +388,9 @@ once the package is reinstalled.
 | Add/change a compliance framework | `core/compliance.py:FRAMEWORKS`, `tests/test_compliance.py` |
 | Add a scenario pack | drop JSON in `scenarios/packs/`, `tests/test_packs.py` |
 | Support a new upload format | `scenarios/convert.py` (`detect_format` + converter), `tests/test_convert.py` |
-| Change scenario persistence | `core/store.py` (scenarios table), `tests/test_store.py` |
+| Change scenario persistence | `core/store.py` (scenarios table + `_migrate`), `tests/test_store.py` |
+| Change how the live agent behaves | `agent/runner.py` (tools, loop), `tests/test_agent.py` |
+| Add an LLM provider quirk | `agent/llm.py` (`_KEY_ENV_BY_HOST`, request shape) |
+| Run an agent from the API | `web/app.py:execute_agent`, `tests/test_platform.py` |
 | Add a CLI command | `cli.py`, `tests/test_cli.py` |
 ```

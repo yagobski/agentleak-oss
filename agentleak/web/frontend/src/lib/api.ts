@@ -15,6 +15,7 @@ export interface Scenario {
   builtin?: boolean
   pack_id?: string
   origin_id?: string
+  has_spec?: boolean
 }
 
 export interface ScenarioDetail extends Scenario {
@@ -103,11 +104,19 @@ export interface AnalyzePayload {
   redact?: boolean
 }
 
+export interface AgentEndpoint {
+  base_url?: string
+  model?: string
+  api_key?: string
+  api_key_set?: boolean
+}
+
 export interface ProjectConfig {
   detectors?: Record<string, boolean>
   vault?: { mode: "observed" | "explicit"; levels?: Record<string, number> }
   custom_detectors?: CustomRule[]
   redact?: boolean
+  agent?: AgentEndpoint
 }
 
 export interface Project {
@@ -260,6 +269,12 @@ export const api = {
   projectRuns: (id: string) => jsonFetch<RunSummary[]>(`/api/projects/${id}/runs`),
   createRun: (id: string, body: AnalyzePayload & { source?: string }) =>
     jsonFetch<Run>(`/api/projects/${id}/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  executeAgent: (id: string, body: { scenario_id: string; mode?: "live" | "scripted" }) =>
+    jsonFetch<Run>(`/api/projects/${id}/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

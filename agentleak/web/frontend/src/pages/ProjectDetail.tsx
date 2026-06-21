@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { Check, Copy, GitCompare, Loader2, Play, Plus, Trash2 } from "lucide-react"
+import { Bot, Check, Copy, GitCompare, Loader2, Play, Plus, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   api,
@@ -91,18 +91,21 @@ function AuditTab({ project, onRan }: { project: Project; onRan: () => void }) {
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [scenarioId, setScenarioId] = useState("")
   const [trace, setTrace] = useState("")
+  const [mode, setMode] = useState<"agent" | "trace">("agent")
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     api.scenarios().then((s) => {
       setScenarios(s)
-      if (s.length) loadScenario(s[0].id)
+      if (s.length) {
+        setScenarioId(s[0].id)
+        loadTrace(s[0].id)
+      }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function loadScenario(sid: string) {
-    setScenarioId(sid)
+  async function loadTrace(sid: string) {
     try {
       setTrace(JSON.stringify(await api.example(sid), null, 2))
     } catch (e) {
@@ -110,7 +113,25 @@ function AuditTab({ project, onRan }: { project: Project; onRan: () => void }) {
     }
   }
 
-  async function run() {
+  const agent = project.config.agent
+  const live = !!agent?.model
+  const selected = scenarios.find((s) => s.id === scenarioId)
+
+  async function runAgent() {
+    setBusy(true)
+    try {
+      const r = await api.executeAgent(project.id, { scenario_id: scenarioId })
+      toast.success(`Agent run ${r.verdict} · RI ${r.report.risk_index.toFixed(3)}`)
+      onRan()
+      nav(`/runs/${r.id}`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runTrace() {
     let parsed: unknown
     try {
       parsed = JSON.parse(trace)
@@ -132,39 +153,107 @@ function AuditTab({ project, onRan }: { project: Project; onRan: () => void }) {
 
   return (
     <Card className="p-5">
-      <p className="mb-4 text-sm text-muted-foreground">
-        Runs use this project's detectors and vault scope (edit them in Settings). Pick a scenario or paste
-        a trace from your agent.
-      </p>
-      <div className="grid gap-4 md:grid-cols-[240px_1fr]">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Scenario</Label>
-          <Select value={scenarioId} onValueChange={loadScenario}>
-            <SelectTrigger>
-              <SelectValue placeholder="Pick a scenario" />
-            </SelectTrigger>
-            <SelectContent>
-              {scenarios.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button className="mt-2 w-full" onClick={run} disabled={busy}>
-            {busy ? <Loader2 className="animate-spin" /> : <Play />} Run analysis
-          </Button>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Trace (JSON)</Label>
-          <Textarea
-            value={trace}
-            onChange={(e) => setTrace(e.target.value)}
-            spellCheck={false}
-            className="h-72 font-mono text-[12px] leading-relaxed"
-          />
-        </div>
+      <div className="mb-4 grid max-w-xs grid-cols-2 gap-1.5 rounded-md bg-muted p-1">
+        {(["agent", "trace"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+              mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {m === "agent" ? "Run agent" : "Analyze trace"}
+          </button>
+        ))}
       </div>
+
+      {mode === "agent" ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            AgentLeak runs this project's agent against the scenario's task and private data, captures the
+            trace it produces, then scores it with the project's detectors and vault scope.
+          </p>
+          <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Scenario</Label>
+              <Select value={scenarioId} onValueChange={setScenarioId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a scenario" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scenarios.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name ?? s.id}
+                      {s.has_spec ? "  ·  spec" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={runAgent} disabled={busy || !scenarioId}>
+              {busy ? <Loader2 className="animate-spin" /> : <Bot />} Run agent
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs">
+            {live ? (
+              <>
+                <Sparkles className="size-3.5 text-primary" />
+                <span>
+                  Live agent — <code className="font-mono">{agent?.model}</code>. The model decides what to do; real
+                  disclosures are captured.
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">
+                Scripted (offline) agent. Add an LLM endpoint in <b className="text-foreground">Settings</b> to run a
+                real model.
+              </span>
+            )}
+          </div>
+          {selected && !selected.has_spec && (
+            <p className="text-[11px] text-muted-foreground">
+              This scenario has no stored spec — the agent's task and data are derived from its trace.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Already have a trace from your own agent? Paste it to score it directly (or load a scenario's trace as a
+            starting point).
+          </p>
+          <div className="grid gap-4 md:grid-cols-[240px_1fr]">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Load scenario trace</Label>
+              <Select value={scenarioId} onValueChange={(v) => { setScenarioId(v); loadTrace(v) }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a scenario" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scenarios.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name ?? s.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button className="mt-2 w-full" onClick={runTrace} disabled={busy}>
+                {busy ? <Loader2 className="animate-spin" /> : <Play />} Analyze trace
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Trace (JSON)</Label>
+              <Textarea
+                value={trace}
+                onChange={(e) => setTrace(e.target.value)}
+                spellCheck={false}
+                className="h-72 font-mono text-[12px] leading-relaxed"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
@@ -319,6 +408,10 @@ function SettingsTab({ project, onSaved, onDeleted }: { project: Project; onSave
     1: 0, 2: 0, 3: 0, 4: 0, ...(project.config.vault?.levels ?? {}),
   })
   const [rules, setRules] = useState<CustomRule[]>(project.config.custom_detectors ?? [])
+  const [agentBaseUrl, setAgentBaseUrl] = useState(project.config.agent?.base_url ?? "")
+  const [agentModel, setAgentModel] = useState(project.config.agent?.model ?? "")
+  const [agentKey, setAgentKey] = useState("")
+  const agentKeySet = project.config.agent?.api_key_set ?? false
   const [busy, setBusy] = useState(false)
 
   async function save() {
@@ -329,6 +422,8 @@ function SettingsTab({ project, onSaved, onDeleted }: { project: Project; onSave
         redact,
         vault: vaultMode === "explicit" ? { mode: "explicit", levels: vault } : { mode: "observed" },
         custom_detectors: rules.filter((r) => r.name && r.pattern).map((r) => ({ ...r, data_type: r.name })),
+        // Blank api_key is preserved server-side (the stored key is kept).
+        agent: { base_url: agentBaseUrl.trim(), model: agentModel.trim(), api_key: agentKey },
       }
       await api.updateProject(project.id, { name, agent_type: agentType, config })
       toast.success("Project saved")
@@ -453,6 +548,56 @@ function SettingsTab({ project, onSaved, onDeleted }: { project: Project; onSave
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card className="space-y-4 p-5 lg:col-span-2">
+        <div className="flex items-center gap-2">
+          <Bot className="size-4 text-primary" />
+          <Label className="text-xs">Live agent endpoint</Label>
+          <span className="text-[11px] text-muted-foreground">
+            OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM…). Leave empty to use the scripted offline agent.
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { label: "OpenAI", url: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+            { label: "OpenRouter", url: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
+            { label: "Ollama", url: "http://localhost:11434/v1", model: "llama3.1" },
+          ].map((p) => (
+            <button
+              key={p.label}
+              onClick={() => { setAgentBaseUrl(p.url); if (!agentModel) setAgentModel(p.model) }}
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Base URL</Label>
+            <Input value={agentBaseUrl} onChange={(e) => setAgentBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Model</Label>
+            <Input value={agentModel} onChange={(e) => setAgentModel(e.target.value)} placeholder="gpt-4o-mini" className="font-mono text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">API key</Label>
+            <Input
+              type="password"
+              value={agentKey}
+              onChange={(e) => setAgentKey(e.target.value)}
+              placeholder={agentKeySet ? "•••••••• (stored — leave blank to keep)" : "sk-… (or set via env var)"}
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          The key is stored locally and never returned by the API. You can also leave it blank and export
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">OPENAI_API_KEY</code>/
+          <code className="rounded bg-muted px-1 py-0.5">OPENROUTER_API_KEY</code> before launching.
+        </p>
       </Card>
 
       <div className="lg:col-span-2 flex items-center justify-between">
