@@ -29,7 +29,9 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
-      # Configure a Trusted Publisher for this repo on PyPI to enable this step:
-      # https://docs.pypi.org/trusted-publishers/ (no API token required).
+      # One-time setup to enable this: add a Trusted Publisher for this repo on
+      # PyPI (https://docs.pypi.org/trusted-publishers/ — no API token needed).
+      # Until then the step is best-effort and won't fail the release.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        continue-on-error: true
