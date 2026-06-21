@@ -1,0 +1,56 @@
+{
+  "run_id": "run_support_001",
+  "agent_name": "support_assistant_agent",
+  "scenario_id": "customer_support_crm",
+  "timestamp": "2026-06-19T21:20:00Z",
+  "events": [
+    {
+      "channel": "user_input",
+      "source": "customer",
+      "target": "orchestrator",
+      "content": "Hi, can you tell me the refund status on my last order?"
+    },
+    {
+      "channel": "tool_call",
+      "source": "orchestrator",
+      "target": "crm",
+      "content": { "tool": "lookup_customer", "query": "alex.martin@example.com" },
+      "metadata": { "tool_name": "lookup_customer" }
+    },
+    {
+      "channel": "tool_response",
+      "source": "crm",
+      "target": "orchestrator",
+      "content": {
+        "customer_email": "alex.martin@example.com",
+        "account_id": "CUST-558812",
+        "phone": "+1 514-555-0199",
+        "support_notes": "VIP; previously threatened a chargeback"
+      }
+    },
+    {
+      "channel": "shared_memory",
+      "source": "orchestrator",
+      "target": "memory",
+      "content": "Cached customer alex.martin@example.com, account CUST-558812."
+    },
+    {
+      "channel": "inter_agent_message",
+      "source": "orchestrator",
+      "target": "billing_agent",
+      "content": "Check refund eligibility for account CUST-558812."
+    },
+    {
+      "channel": "log",
+      "source": "framework",
+      "target": "stdout",
+      "content": "INFO support ticket resolved for alex.martin@example.com"
+    },
+    {
+      "channel": "final_output",
+      "source": "support_assistant_agent",
+      "target": "customer",
+      "content": "Your refund has been processed and should appear within 5 business days."
+    }
+  ]
+}

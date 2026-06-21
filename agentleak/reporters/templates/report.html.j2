@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentLeak Privacy Report — {{ d.project }}</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #9aa3b2; --accent: #5b8cff;
+    --critical: #ff4d4f; --high: #ff8c42; --medium: #ffce56; --low: #6ad1a0; --none: #4a5160;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5; font-size: 15px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .logo { font-weight: 800; letter-spacing: -0.02em; font-size: 20px; }
+  .logo .leak { color: var(--accent); }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .meta b { color: var(--text); font-weight: 600; }
+
+  .hero {
+    display: grid; grid-template-columns: 220px 1fr; gap: 24px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px; margin-bottom: 24px;
+  }
+  .gauge { text-align: center; }
+  .score { font-size: 64px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+  .score small { font-size: 22px; color: var(--muted); font-weight: 600; }
+  .verdict {
+    display: inline-block; margin-top: 10px; padding: 6px 14px; border-radius: 999px;
+    font-weight: 700; font-size: 14px;
+  }
+  .bar-track { height: 10px; background: var(--panel2); border-radius: 999px; overflow: hidden; margin-top: 16px; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+
+  .counts { display: flex; flex-wrap: wrap; gap: 10px; align-self: center; }
+  .pill {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 16px; min-width: 96px;
+  }
+  .pill .n { font-size: 26px; font-weight: 800; line-height: 1; }
+  .pill .l { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+  .blocked {
+    margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+    background: rgba(255,77,79,0.12); border: 1px solid rgba(255,77,79,0.35); color: #ffb3b4;
+    font-weight: 600; font-size: 14px;
+  }
+
+  h2 { font-size: 16px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 28px 0 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { background: var(--panel2); padding: 2px 7px; border-radius: 6px; font-size: 13px; color: #d7def0; }
+
+  .chan-bar { height: 8px; border-radius: 999px; background: var(--panel2); position: relative; min-width: 80px; }
+  .chan-bar > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+
+  .tag {
+    display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    text-transform: capitalize;
+  }
+  .sev-critical { background: rgba(255,77,79,0.16); color: var(--critical); }
+  .sev-high     { background: rgba(255,140,66,0.16); color: var(--high); }
+  .sev-medium   { background: rgba(255,206,86,0.16); color: var(--medium); }
+  .sev-low      { background: rgba(106,209,160,0.16); color: var(--low); }
+  .sev-none     { background: rgba(74,81,96,0.25); color: var(--muted); }
+
+  ul.recs { list-style: none; padding: 0; margin: 0; }
+  ul.recs li { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  ul.recs li:last-child { border-bottom: none; }
+  ul.recs li::before { content: "→ "; color: var(--accent); font-weight: 700; }
+
+  .insight {
+    background: linear-gradient(180deg, rgba(91,140,255,0.10), rgba(91,140,255,0.02));
+    border: 1px solid rgba(91,140,255,0.30); border-radius: 14px; padding: 18px 20px; margin: 24px 0;
+    font-size: 15px;
+  }
+  .insight b { color: var(--accent); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 36px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Agent<span class="leak">Leak</span></div>
+    <div style="color:var(--muted);font-size:13px;">Privacy Report</div>
+  </header>
+  <div class="meta">
+    <b>{{ d.project }}</b> · agent <b>{{ d.agent_name }}</b>
+    {%- if d.scenario_id %} · scenario <b>{{ d.scenario_id }}</b>{% endif %} ·
+    run <b>{{ d.run_id }}</b> · {{ d.event_count }} events · AgentRisk scoring · {{ d.generated_at }}
+  </div>
+
+  <section class="hero">
+    <div class="gauge">
+      <div style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Risk Index</div>
+      <div class="score" style="color: {{ verdict_color }};">{{ "%.3f"|format(d.risk_index) }}</div>
+      <div class="verdict" style="background: {{ verdict_bg }}; color: {{ verdict_color }};">{{ d.verdict }} · {{ d.privacy_score }}/100</div>
+      <div class="bar-track"><div class="bar-fill" style="width: {{ (d.risk_index * 100)|round(1) }}%; background: {{ verdict_color }};"></div></div>
+      <div style="color:var(--muted);font-size:12px;margin-top:10px;">WSL {{ d.wsl }} / ρ<sub>S</sub> {{ d.rho_s }}</div>
+    </div>
+    <div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Leaked secrets by severity level</div>
+      <div class="counts">
+        {% for lvl, sev, name in [("L4","critical","special category"),("L3","high","financial / legal"),("L2","medium","behavioral / contact"),("L1","low","identifier")] %}
+        <div class="pill" title="{{ name }}">
+          <div class="n" style="color: var(--{{ sev }});">{{ d.summary.level_profile.get(lvl, 0) }}</div>
+          <div class="l">{{ lvl }}</div>
+        </div>
+        {% endfor %}
+        <div class="pill">
+          <div class="n">{{ d.summary.total_findings }}</div>
+          <div class="l">total</div>
+        </div>
+      </div>
+      {% if d.scope_def %}<div style="color:var(--muted);font-size:12px;margin-top:12px;">Scope (ρ<sub>S</sub>): {{ d.scope_def }}</div>{% endif %}
+      {% if d.blocked %}<div class="blocked">⛔ Blocked — this run would fail a CI privacy gate.</div>{% endif %}
+    </div>
+  </section>
+
+  {% if insight %}<div class="insight">{{ insight | safe }}</div>{% endif %}
+
+  <h2>Risk by channel</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Channel</th><th>Top level</th><th>Findings</th><th>Channel RI</th><th style="width:30%">Contribution</th></tr></thead>
+      <tbody>
+      {% if d.channel_risks %}
+        {% for cr in d.channel_risks %}
+        <tr>
+          <td><code>{{ cr.channel }}</code></td>
+          <td><span class="tag sev-{{ cr.level }}">{{ cr.level_label }}</span></td>
+          <td class="num">{{ cr.finding_count }}</td>
+          <td class="num">{{ "%.3f"|format(cr.ri) }}</td>
+          <td>
+            <div class="chan-bar"><span style="width: {{ (cr.ri / max_contrib * 100) if max_contrib else 0 }}%; background: var(--{{ cr.level }});"></span></div>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="5" style="color:var(--muted);">No leaks detected in any channel.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Findings ({{ d.findings | length }})</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>#</th><th>Level</th><th>Channel</th><th>Type</th><th>Value</th><th>Detector</th></tr></thead>
+      <tbody>
+      {% if d.findings %}
+        {% for f in d.findings %}
+        <tr>
+          <td class="num">{{ loop.index }}</td>
+          <td><span class="tag sev-{{ f.badge }}">{{ f.level_label }}</span></td>
+          <td><code>{{ f.channel }}</code></td>
+          <td>{{ f.data_type }}</td>
+          <td><code>{{ f.redacted_value or f.get('matched_value', '') }}</code></td>
+          <td style="color:var(--muted);font-size:13px;">{{ f.detector }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="6" style="color:var(--muted);">No findings.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if d.recommendations %}
+  <h2>Recommendations</h2>
+  <div class="panel"><ul class="recs">
+    {% for r in d.recommendations %}<li>{{ r }}</li>{% endfor %}
+  </ul></div>
+  {% endif %}
+
+  {% if d.compliance and d.compliance.frameworks %}
+  <h2>Compliance
+    <span style="font-size:12px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;">
+      {{ d.compliance.summary.compliant }}/{{ d.compliance.summary.total }} frameworks clear ·
+      {{ d.compliance.summary.controls_at_risk }} control(s) at risk
+    </span>
+  </h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+    {% for fw in d.compliance.frameworks %}
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);">
+        <span style="font-size:13px;font-weight:600;">{{ fw.name }}</span>
+        {% if fw.status == 'compliant' %}
+          <span class="tag sev-low">clear</span>
+        {% else %}
+          <span class="tag sev-critical">{{ fw.at_risk }} at risk</span>
+        {% endif %}
+      </div>
+      <div>
+        {% for ctrl in fw.controls %}
+        <div style="display:flex;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);">
+          <span style="color: {% if ctrl.status=='at_risk' %}var(--critical){% elif ctrl.status=='info' %}var(--accent){% else %}var(--low){% endif %};font-weight:700;">
+            {{ '✗' if ctrl.status=='at_risk' else ('ℹ' if ctrl.status=='info' else '✓') }}
+          </span>
+          <div>
+            <div style="font-size:13px;">{{ ctrl.name }}</div>
+            <div style="font-size:11px;color:var(--muted);">{{ ctrl.rationale }}</div>
+            {% if ctrl.evidence %}<div style="margin-top:4px;">{% for e in ctrl.evidence[:6] %}<code style="font-size:10px;color:var(--critical);background:rgba(255,77,79,0.1);">{{ e }}</code> {% endfor %}</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <footer>Generated locally by AgentLeak OSS · no data left this machine.</footer>
+</div>
+</body>
+</html>

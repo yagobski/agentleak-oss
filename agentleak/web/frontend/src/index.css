@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 25% 98%;
+    --foreground: 222 32% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 32% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 32% 11%;
+    --primary: 190 78% 34%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 22% 94%;
+    --secondary-foreground: 222 25% 20%;
+    --muted: 215 22% 95%;
+    --muted-foreground: 220 12% 40%;
+    --accent: 215 25% 91%;
+    --accent-foreground: 222 25% 18%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 16% 87%;
+    --input: 220 16% 85%;
+    --ring: 190 78% 38%;
+    --sev-l4: 0 72% 50%;
+    --sev-l3: 24 88% 46%;
+    --sev-l2: 42 90% 42%;
+    --sev-l1: 150 48% 36%;
+    --sev-ok: 160 50% 38%;
+    --radius: 0.55rem;
+  }
+
+  /* Black theme — near-black zinc surfaces, high contrast (shadcn "black"). */
+  .dark {
+    --background: 240 6% 4%;
+    --foreground: 0 0% 96%;
+    --card: 240 5% 6.5%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 6% 5%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 187 84% 53%;
+    --primary-foreground: 200 80% 6%;
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 240 4% 11%;
+    --muted-foreground: 240 5% 58%;
+    --accent: 240 4% 14%;
+    --accent-foreground: 0 0% 94%;
+    --destructive: 0 72% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 4% 13%;
+    --input: 240 4% 18%;
+    --ring: 187 84% 53%;
+    --sev-l4: 0 80% 65%;
+    --sev-l3: 24 92% 61%;
+    --sev-l2: 45 93% 58%;
+    --sev-l1: 152 58% 52%;
+    --sev-ok: 160 62% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Instrument texture: a faint grid + a single soft top glow. No images. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, hsl(var(--primary) / 0.07), transparent 60%),
+      linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 100% 100%, 56px 56px, 56px 56px;
+    mask-image: radial-gradient(130% 100% at 50% 0%, #000 35%, transparent 92%);
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground;
+  }
+}
+
+/* Enter animations that degrade safely: the element's rendered value IS the
+   final state; the keyframe only animates FROM a transient start, so if the
+   animation never runs the true value is still shown (no rAF dependency). */
+@keyframes arc-draw {
+  from {
+    stroke-dashoffset: var(--arc-len);
+  }
+}
+.arc-draw {
+  animation: arc-draw 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes bar-grow {
+  from {
+    width: 0;
+  }
+}
+.bar-grow {
+  animation: bar-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .arc-draw,
+  .bar-grow,
+  .animate-fade-up,
+  .animate-scan {
+    animation: none !important;
+  }
+}
+
+/* Slim, themed scrollbars for the dense panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 999px;
+}

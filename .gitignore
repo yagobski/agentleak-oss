@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend toolchain (the BUILT bundle in agentleak/web/static/ IS committed)
+agentleak/web/frontend/node_modules/
+agentleak/web/frontend/*.tsbuildinfo
+node_modules/
+
+# AgentLeak local output
+reports/
+traces/*.local.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.claude/

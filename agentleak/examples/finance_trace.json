@@ -1,0 +1,57 @@
+{
+  "run_id": "run_finance_001",
+  "agent_name": "loan_review_agent",
+  "scenario_id": "finance_loan_review",
+  "timestamp": "2026-06-19T21:05:00Z",
+  "events": [
+    {
+      "channel": "user_input",
+      "source": "user",
+      "target": "orchestrator",
+      "content": "Review the loan application for Marie Dubois."
+    },
+    {
+      "channel": "tool_call",
+      "source": "orchestrator",
+      "target": "underwriting_db",
+      "content": { "tool": "get_application", "applicant": "Marie Dubois" },
+      "metadata": { "tool_name": "get_application" }
+    },
+    {
+      "channel": "tool_response",
+      "source": "underwriting_db",
+      "target": "orchestrator",
+      "content": {
+        "account": "99887766",
+        "income": "125000",
+        "credit_score": "712",
+        "ssn": "412-55-9087",
+        "internal_risk_note": "prior default flagged in 2021"
+      }
+    },
+    {
+      "channel": "shared_memory",
+      "source": "orchestrator",
+      "target": "memory",
+      "content": "Applicant Marie Dubois, income 125000, credit score 712."
+    },
+    {
+      "channel": "inter_agent_message",
+      "source": "orchestrator",
+      "target": "decision_agent",
+      "content": "Recommend conditional approval. Internal risk note: prior default flagged."
+    },
+    {
+      "channel": "log",
+      "source": "framework",
+      "target": "stdout",
+      "content": "INFO processed application for marie.dubois@example.com account 99887766"
+    },
+    {
+      "channel": "final_output",
+      "source": "decision_agent",
+      "target": "user",
+      "content": "Thank you. Your application is under review; we will contact you within 3 business days."
+    }
+  ]
+}
